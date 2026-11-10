@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@ar-js-org/aruco-rs": "0.1.0",
-    "next": "16.4.3",
+    "next": "16.4.5",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "zxing-wasm": "3.1.6"
@@ -30,7 +30,7 @@
     "@zxing/library": "0.23.0",
     "esbuild": "0.28.2",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.4.3",
+    "eslint-config-next": "16.4.5",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
     "vitest": "5.0.5"
