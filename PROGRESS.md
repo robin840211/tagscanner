@@ -49,3 +49,17 @@
 - 不自動上傳或持久保存影像與掃描內容。
 - 清晰 QR 與常見條碼可在手機及桌面瀏覽器完成辨識。
 - 合成 ArUco 與 tag36h11 AprilTag 可由 WASM 引擎解碼，且不連線第三方 CDN。
+
+## Version footer and dependency PRs
+
+- User requests: inspect/handle Dependabot PRs; add automatic seven-character Git hash and source date plus repository/Issues links in a small footer. Latest steering prioritizes UI; leave PRs alone only if they already merge automatically.
+- Baseline main/origin/main 0e631c4, clean tree. PRs 12 (Tailwind 4.3.5), 15 (zxing-wasm 3.1.7), 16 (Vitest 5.1.1) have successful CI and no autoMergeRequest.
+- Ownership: Codex implements footer/build metadata and integrates PRs; Claude Fable read-only plan confirmation 549ae34390a3359cafcb1d19d8595c02, Opus independent final review. No concurrent source writers.
+- Claude usage observed 2026-11-26 08:46 UTC seven-day 16%, stale; fresh availability to be confirmed by bounded call.
+
+- Fable plan 549ae34390a3359cafcb1d19d8595c02 PASS; session e8f5659d-ab50-4505-9040-f6fdf5e0269c, actual claude-fable-5-2. Fresh usage 2026-11-26 13:13 UTC seven-day 16%, overage disabled.
+- Implemented build-time Git metadata (exact first 7 characters, full commit link, commit date in Asia/Taipei; Git-less builds show build date), responsive footer with GitHub/Issues links. No client-side metadata request or workflow secret needed.
+- Independent Opus review 6d412e4994ed3af6b8e244d72b7bcfbf PASS, no findings; session 8b3db3f0-1b27-42f1-be07-905a7428f1a9, actual claude-opus-5-5. Five metadata tests, targeted lint, typecheck and static build passed. Browser 1920x1080 and 390x844 have matching document dimensions, visible footer and correct hrefs; console clean.
+- GitHub connector merge lacked integration permission (403); existing authenticated gh merged PR12 as 774e864. Pages run 45827516789 succeeded. Local main fast-forwarded, npm ci succeeded (existing 7 moderate advisories).
+- PR16 remains open: lockfile conflicts after Tailwind merge; optional test-runner update deferred under latest user priority. PR15 remains open: decoder update should accompany service-worker cache revision to refresh fixed asset URLs. No auto-merge settings changed.
+- Footer changes are local-only until a later authorized push; each build automatically reads its checked-out commit. Current browser screenshots are local preview evidence.
