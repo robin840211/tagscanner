@@ -29,7 +29,7 @@
 - 網站：https://robin840211.github.io/tagscanner/ ；單一 repo `robin840211/tagscanner`，推送 `main` 會由 Deploy GitHub Pages workflow 驗證（lint、typecheck、test、build）並發布。
 - 舊發布 repo 已改名 `tagscanner-publisher-old` 並封存，舊網址 `/AnyTagScanner/` 已失效。
 - 本次驗證：lint、typecheck、19 項相關測試及靜態建置；`npm audit` 尚有 7 個 moderate 開發工具相依告警。
-- 解碼：zxing-wasm（Web Worker）處理 QR／條碼，OpenCV.js（Web Worker）處理 ArUco 4×4/5×5，aruco-rs（WASM）處理 Original/MIP，AprilTag 使用固定上游 commit 的 WASM；皆為本機資產。
+- 解碼：zxing-wasm（Web Worker）處理 QR／條碼，OpenCV.js（Web Worker）處理全部 ArUco 字典，AprilTag 使用固定上游 commit 的 WASM；皆為本機資產。
 - 即時掃描：共用相機串流切換模式不重開鏡頭、350ms 疊圖過期、持續出現的同一標記只保留一筆歷史、停止／背景／卸載時釋放相機。
 - PWA：manifest、正式圖示（any／maskable）、apple-touch-icon、favicon、社群預覽圖（`og.png`）與離線 Service Worker。
 - 依賴策略：Dependabot 每週檢查；刻意保留 eslint 9、TypeScript 6.0、@types/node 24，升級前需確認相容性。
@@ -63,3 +63,20 @@
 - GitHub connector merge lacked integration permission (403); existing authenticated gh merged PR12 as 774e864. Pages run 45827516789 succeeded. Local main fast-forwarded, npm ci succeeded (existing 7 moderate advisories).
 - PR16 remains open: lockfile conflicts after Tailwind merge; optional test-runner update deferred under latest user priority. PR15 remains open: decoder update should accompany service-worker cache revision to refresh fixed asset URLs. No auto-merge settings changed.
 - Footer changes are local-only until a later authorized push; each build automatically reads its checked-out commit. Current browser screenshots are local preview evidence.
+
+## Marker orientation overlay
+
+- User requests a checkbox labelled 標示方向 for positional markers (ArUco/AprilTag), omit QR/barcodes. Baseline b737114, clean tree.
+- Codex owns implementation and decoder rotation validation; Claude Fable read-only plan confirmation and Opus independent final review. Orientation is an image-plane marker direction, with no camera calibration/3D pose scope. Preserve camera lifecycle and stale-overlay timeout.
+
+- Fable plan d438e07b12d3139065617a1491018257 PASS; actual claude-fable-5-2, session d9a59072-9cda-4ecb-8236-142af0639b8c. Adopt one arrow without extra corner dot.
+- Initial decoder rotation probe found aruco-rs0.1.0 Original/MIP 90/270-degree corner orientation reversed. AprilTag was initially compared against OpenCV-generated images; the official-image verification below supersedes that orientation assumption. Use existing OpenCV worker for Original/MIP as well, preserving their 960 camera sampling.
+
+- Fable followups 121d8149f5f6eeb7b2ca6ae821381f85 (INCOMPLETE pending AprilTag ground truth) and c48164eccd32336879c29122e993ebcc (PASS), same session, actual claude-fable-5-2. Official apriltag-imgs ID0/1 match OpenCV reference images only after 180-degree rotation; final arrow uses official AprilTag orientation and normalizes native corners [3,2,1,0].
+- All ArUco families now use the shared OpenCV worker; Original/MIP keep 960 sampling. Removed aruco-rs dependency and its replaced integration test; restored unrelated libc metadata after npm normalization. Worker cache v8.
+- Actual original engine probe: Original ID1023 missed; MIP generated images produced extra ID97 false detections; 90/270 orientation was reversed. New decoder probe: 70 cases across five families, two IDs each plus Original123/1023 and MIP100/249, at 0/30/90/180/270 degrees pass exact IDs and direction. Evidence outputs/orientation-before.json and outputs/orientation-verification.json.
+- Original ID1023 has 180-degree symmetry (verified all1024 Original codes; only1023 symmetric); keep its detection/ID but omit its ambiguous arrow. No symmetric markers in other supported ArUco dictionaries.
+- Geometry uses projected canonical centerline; seven geometry tests and extended real OpenCV rotation tests pass, 26 relevant tests total, targeted lint/typecheck and static build pass. Browser harness initially saw an old cached worker; fresh localhost port4319 passed, confirming need for cache revision. No real camera test claimed.
+- Browser verification: checkbox defaults off, appears only for ArUco/AprilTag, updates existing photo overlays immediately without changing history, and coexists with ID labels. User photos and AprilTag reference decoded correctly; 390x844 document fits viewport; QR has no direction checkbox; console has no errors/warnings. Screenshot outputs/tag-orientation.jpg.
+- Independent Opus review 188f9374c87185790617e564e3e95447 PASS, no findings; session d4b03122-6913-494d-9c06-65e40a04e429, actual claude-opus-5-5. Added README orientation convention and corrected initial-probe record. Remaining existing HTTP-cache refresh window for unversioned vendor assets is deferred; tiny markers omit arrows below 8 CSS px arrow length. Official usage 2026-11-26 13:50 UTC seven-day17%, overage disabled.
+- Orientation work is ready for local commit; no push in this stage.

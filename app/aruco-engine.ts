@@ -41,66 +41,10 @@ export type ArucoDetector = {
   free(): void;
 };
 
-let modulePromise: Promise<typeof import('@ar-js-org/aruco-rs')> | null = null;
-
-function isMarker(value: unknown): value is ArucoMarker {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<ArucoMarker>;
-  return (
-    Number.isInteger(candidate.id) &&
-    typeof candidate.distance === 'number' &&
-    Array.isArray(candidate.corners) &&
-    candidate.corners.length >= 4 &&
-    candidate.corners.every(
-      (point) =>
-        point &&
-        Number.isFinite(point.x) &&
-        Number.isFinite(point.y),
-    )
-  );
-}
-
-async function loadModule() {
-  if (!modulePromise) {
-    modulePromise = import('@ar-js-org/aruco-rs').then(async (arucoModule) => {
-      await arucoModule.default();
-      return arucoModule;
-    }).catch(error => { modulePromise = null; throw error; });
-  }
-  return modulePromise;
-}
-
-export async function createArucoDetector(
-  family: ArucoFamily,
-): Promise<ArucoDetector> {
-  if (family.startsWith('DICT_')) {
-    const worker = new ArucoWorkerClient();
-    return {
-      detect: (width, height, pixels, selectedFamily = family) => worker.detect(width, height, pixels, ARUCO_FAMILY_DEFINITIONS[selectedFamily].opencvDictionary),
-      free: () => worker.free(),
-    };
-  }
-  const arucoModule = await loadModule();
-  const detector = new arucoModule.ARucoDetector(family);
-
+export async function createArucoDetector(family: ArucoFamily): Promise<ArucoDetector> {
+  const worker = new ArucoWorkerClient();
   return {
-    detect(width, height, pixels) {
-      const bytes =
-        pixels instanceof Uint8Array
-          ? pixels
-          : new Uint8Array(
-              pixels.buffer,
-              pixels.byteOffset,
-              pixels.byteLength,
-            );
-      const result: unknown = detector.detect_image(width, height, bytes);
-      return Array.isArray(result) ? result.filter(isMarker) : [];
-    },
-    free() {
-      detector.free();
-    },
+    detect: (width, height, pixels, selectedFamily = family) => worker.detect(width, height, pixels, ARUCO_FAMILY_DEFINITIONS[selectedFamily].opencvDictionary),
+    free: () => worker.free(),
   };
 }

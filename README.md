@@ -26,6 +26,8 @@ TagScanner 使用瀏覽器相機或圖片辨識常用條碼與視覺標記。辨
 - 工作階段最近 100 筆掃描紀錄與 JSON 匯出；持續出現的同一標記保留一筆
 - 響應式手機、平板與桌面版面
 
+ArUco／AprilTag 模式可勾選「標示方向」，以箭頭標出標記上方。AprilTag 以官方 apriltag-imgs 的方向為準，與 OpenCV 產生圖的方向相差 180°。
+
 ArUco 支援 `DICT_4X4_50/100/250/1000`、`DICT_5X5_50/100/250/1000`、`DICT_ARUCO_ORIGINAL` 與 `DICT_ARUCO_MIP_36h12`。AprilTag 支援 `DICT_APRILTAG_36h11`。
 
 辨識 ChArUco 棋盤時，選擇「ArUco」與棋盤使用的字典，即可讀取各標記的 ID 和四角位置。4×4、5×5 表示標記內部的資料格數；50、100、250、1000 表示字典容量。相同格數的這四組字典共用前段 ID，已知產生設定時選用相同容量。

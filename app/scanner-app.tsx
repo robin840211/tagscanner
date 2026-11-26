@@ -10,6 +10,7 @@ import { createOpenCvDetectionSnippet } from './opencv-reference';
 import type { OpenCvDictionaryName } from './opencv-reference';
 import { isSafeWebUrl, paginateScanText } from './scanner-utils';
 import { ScanTracker } from './scan-tracker';
+import { drawTagDirection } from './tag-orientation';
 
 type Mode = 'auto' | 'qr' | 'barcode' | 'aruco' | 'apriltag';
 type CameraState = 'off' | 'starting' | 'scanning' | 'image' | 'error';
@@ -39,6 +40,7 @@ export default function ScannerApp() {
   const [history, setHistory] = useState<Entry[]>([]);
   const [selected, setSelected] = useState<Entry | null>(null);
   const [overlay, setOverlay] = useState<Overlay | null>(null);
+  const [showOrientation, setShowOrientation] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [torch, setTorch] = useState(false);
   const [copyLabel, setCopyLabel] = useState('複製內容');
@@ -85,7 +87,7 @@ export default function ScannerApp() {
   const decode = useCallback(async (frame: ImageData, options: Config, exhaustive: boolean): Promise<Detection[]> => {
     const { width, height, data } = frame;
     if (options.mode === 'aruco') {
-      const cacheKey = options.family.startsWith('DICT_') ? 'opencv' : options.family;
+      const cacheKey = 'opencv';
       let pending = aruco.current.get(cacheKey);
       if (!pending) {
         aruco.current.forEach(previous => { void previous.then(detector => detector.free()).catch(() => {}); });
@@ -293,6 +295,9 @@ export default function ScannerApp() {
         });
         if (shape.points.length > 2) context.closePath();
         context.stroke();
+        if (showOrientation && shape.opencvDictionary) {
+          drawTagDirection(context, shape.points.map(point => ({ x: ox + point.x * scale, y: oy + point.y * scale })), shape.opencvDictionary, ratio, Number(shape.text));
+        }
         if (shape.opencvDictionary && tagCount <= 3 && shape.points.length) {
           const label = `ID ${shape.text}`;
           context.font = `600 ${14 * ratio}px system-ui`;
@@ -310,7 +315,7 @@ export default function ScannerApp() {
     };
     draw(); const observer = new ResizeObserver(draw); observer.observe(canvas);
     return () => observer.disconnect();
-  }, [overlay]);
+  }, [overlay, showOrientation]);
 
   useEffect(() => {
     alive.current = true;
@@ -364,6 +369,7 @@ export default function ScannerApp() {
           {config.mode === 'aruco' ? <label>字典 <select aria-label="ArUco 字典" value={config.family} onChange={event => changeConfig({ family: event.target.value as ArucoFamily })}>
             {Object.entries(ARUCO_FAMILY_DEFINITIONS).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
           </select></label> : config.mode === 'apriltag' ? <span>AprilTag 36h11</span> : <label className="check-option"><input type="checkbox" checked={config.extended} onChange={event => changeConfig({ extended: event.target.checked })} />擴充格式（Micro QR／DataBar）</label>}
+          {(config.mode === 'aruco' || config.mode === 'apriltag') && <label className="check-option" title="箭頭指向標記上方"><input type="checkbox" checked={showOrientation} onChange={event => setShowOrientation(event.target.checked)} />標示方向</label>}
           <span className="fps" title="每秒實際收到的影格／完成的辨識次數">{live ? metrics.video + ' 畫面 · ' + metrics.decode + ' 辨識 /s' : cameraState === 'image' ? '圖片模式' : '相機待命'}</span>
         </div>
         <div className="viewfinder">
