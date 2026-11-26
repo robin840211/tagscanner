@@ -1,5 +1,7 @@
 import ScannerApp from './scanner-app';
 import { getBuildInfo, repositoryUrl } from './build-info';
+import FormatsDialog from './formats-dialog';
+import LogoMark from './logo-mark';
 
 const buildInfo = getBuildInfo();
 
@@ -7,13 +9,14 @@ export default function Home() {
   return (
     <main className="site-shell">
       <header className="topbar">
-        <h1><span className="brand-mark" aria-hidden="true">⌗</span>tagscanner</h1>
-        <p>QR · 條碼 · 視覺標記</p>
+        <h1><LogoMark className="brand-mark" />TagScanner</h1>
+        <p>QR · 條碼 · 定位標記</p>
       </header>
       <ScannerApp />
       <footer className="site-footer">
         <p className="privacy-statement">掃描與影像資料僅在此瀏覽器內處理，不會上傳。</p>
         <nav className="version-links" aria-label="版本與專案">
+          <FormatsDialog />
           <time dateTime={buildInfo.date} title={buildInfo.commit ? '版本日期（UTC+8）' : '建置日期（UTC+8）'}>{buildInfo.date}</time>
           {buildInfo.commit && (
             <a className="commit-hash" href={`${repositoryUrl}/commit/${buildInfo.commit}`} target="_blank" rel="noopener noreferrer" title="查看此版本">{buildInfo.shortHash}</a>

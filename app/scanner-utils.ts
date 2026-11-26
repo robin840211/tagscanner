@@ -7,24 +7,52 @@ export function isSafeWebUrl(value: string) {
   }
 }
 
-export function paginateScanText(value: string, compact: boolean): string[] {
-  const columns = compact ? 18 : 14;
-  const maxLines = compact ? 3 : 10;
-  const pages: string[] = [];
-  let page = '', column = 0, line = 1;
-  for (const character of Array.from(value.replace(/\r\n?/g, '\n'))) {
-    const width = character === '\t' ? 4 : 1;
-    const newline = character === '\n';
-    const wrap = !newline && column + width > columns;
-    if ((newline || wrap) && line === maxLines) {
-      pages.push(page); page = ''; column = 0; line = 1;
-      if (newline) continue;
-    } else if (newline || wrap) {
-      line++; column = 0;
-    }
-    page += character;
-    if (!newline) column += width;
+export type Point = { x: number; y: number };
+
+export function pointInPolygon(point: Point, polygon: Point[]) {
+  if (polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i], b = polygon[j];
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
   }
-  if (page || !pages.length) pages.push(page);
-  return pages;
+  return inside;
+}
+
+/** Shortest side of a quadrilateral, used to skip labels on markers too small to read. */
+export function polygonMinSide(polygon: Point[]) {
+  let min = Infinity;
+  polygon.forEach((point, index) => {
+    const next = polygon[(index + 1) % polygon.length];
+    min = Math.min(min, Math.hypot(next.x - point.x, next.y - point.y));
+  });
+  return Number.isFinite(min) ? min : 0;
+}
+
+export function describeCamera(label: string, index: number) {
+  if (/back|rear|environment|後/i.test(label)) return '後鏡頭';
+  if (/front|user|facetime|前/i.test(label)) return '前鏡頭';
+  return label || '鏡頭 ' + (index + 1);
+}
+
+/** Distinct camera names; repeated names (e.g. several rear lenses) get a number. */
+export function cameraNames(labels: string[]) {
+  const names = labels.map(describeCamera);
+  return names.map((name, index) => names.filter(other => other === name).length > 1
+    ? name + ' ' + (names.slice(0, index + 1).filter(other => other === name).length)
+    : name);
+}
+
+export type HistoryRow = { scannedAt: number; source: string; format: string; text: string };
+
+function csvCell(value: string) {
+  // A leading formula character would run as a formula when the file is opened in a spreadsheet.
+  const safe = /^[=+\-@\t\r]/.test(value) ? "'" + value : value;
+  return /[",\r\n]/.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe;
+}
+
+export function historyToCsv(rows: HistoryRow[]) {
+  const lines = [['time', 'source', 'format', 'content'].join(',')];
+  for (const row of rows) lines.push([new Date(row.scannedAt).toISOString(), row.source, row.format, row.text].map(csvCell).join(','));
+  return '﻿' + lines.join('\r\n') + '\r\n';
 }
