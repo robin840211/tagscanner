@@ -41,6 +41,10 @@ describe('wifi payloads', () => {
   it('falls back to text without an SSID', () => {
     expect(parsePayload('WIFI:T:WPA;P:x;;', 'QRCode').type).toBe('text');
   });
+  it('keeps the encryption name for enterprise networks', () => {
+    expect(labels('WIFI:T:WPA2-EAP;S:Corp;P:x;;')).toContain('加密=WPA2-EAP');
+    expect(labels('WIFI:S:Corp;P:x;;')).toContain('加密=未標示');
+  });
 });
 
 describe('phone, email and sms payloads', () => {
@@ -53,6 +57,9 @@ describe('phone, email and sms payloads', () => {
       { kind: 'copy', label: '複製號碼', value: '+886212345678' },
     ]);
     expect(parsePayload('tel:abc', 'QRCode').type).toBe('text');
+  });
+  it('encodes # so service codes reach the dialer intact', () => {
+    expect(opens('tel:*#06#')).toEqual(['tel:*%2306%23']);
   });
   it('parses mailto with encoded subject and body', () => {
     const result = parsePayload('mailto:a@b.com?subject=Hi%20there&body=x%26y', 'QRCode');

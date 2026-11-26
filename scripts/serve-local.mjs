@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
+import { X509Certificate } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 
@@ -41,7 +42,8 @@ function certificate() {
   const dir = resolve('.local-cert'), key = join(dir, 'key.pem'), cert = join(dir, 'cert.pem');
   const names = ['DNS:localhost', 'IP:127.0.0.1', ...lanAddresses().map(address => 'IP:' + address)].join(',');
   const stamp = join(dir, 'names.txt');
-  if (!existsSync(cert) || !existsSync(stamp) || readFileSync(stamp, 'utf8') !== names) {
+  const expiring = () => { try { return Date.parse(new X509Certificate(readFileSync(cert)).validTo) < Date.now() + 86400000; } catch { return true; } };
+  if (!existsSync(cert) || !existsSync(stamp) || readFileSync(stamp, 'utf8') !== names || expiring()) {
     const openssl = findOpenssl();
     if (!openssl) { console.error('需要 openssl 才能建立 HTTPS 憑證（Git for Windows 內附）。'); process.exit(1); }
     mkdirSync(dir, { recursive: true });
@@ -52,7 +54,18 @@ function certificate() {
   return { key: readFileSync(key), cert: readFileSync(cert) };
 }
 
+// Streams a file; out/ can vanish mid-request while a rebuild runs, which must not crash the server.
+function send(response, file, status, headers, head = false) {
+  const stream = createReadStream(file);
+  stream.on('open', () => { response.writeHead(status, headers); if (head) { stream.destroy(); response.end(); } else stream.pipe(response); });
+  stream.on('error', () => { if (!response.headersSent) response.writeHead(404, { 'Content-Type': types['.txt'] }); response.end(response.headersSent ? undefined : 'Not found'); });
+}
+
 function handler(request, response) {
+  try { route(request, response); } catch { if (!response.headersSent) response.writeHead(500); response.end(); }
+}
+
+function route(request, response) {
   let pathname;
   try { pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname); } catch { response.writeHead(400).end(); return; }
   let file = normalize(join(root, pathname));
@@ -60,13 +73,10 @@ function handler(request, response) {
   if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
   else if (!existsSync(file) && existsSync(file + '.html')) file += '.html';
   if (!existsSync(file)) {
-    const missing = join(root, '404.html');
-    response.writeHead(404, { 'Content-Type': types['.html'] });
-    if (existsSync(missing)) createReadStream(missing).pipe(response); else response.end('Not found');
+    send(response, join(root, '404.html'), 404, { 'Content-Type': types['.html'] });
     return;
   }
-  response.writeHead(200, { 'Content-Type': types[extname(file).toLowerCase()] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' });
-  if (request.method === 'HEAD') response.end(); else createReadStream(file).pipe(response);
+  send(response, file, 200, { 'Content-Type': types[extname(file).toLowerCase()] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' }, request.method === 'HEAD');
 }
 
 const server = secure ? createHttpsServer(certificate(), handler) : createHttpServer(handler);

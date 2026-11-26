@@ -12,6 +12,7 @@ button[aria-pressed='true'], .is-primary, .primary-action { background: var(--ac
 p, h1, h2, h3, dl, dd { margin: 0; }
 code { font-family: ui-monospace, Consolas, monospace; font-size: .95em; }
 .muted { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .link-button { border: 0; background: none; padding: 0 4px; color: var(--focus); font-size: 12px; text-decoration: underline; }
 .link-button:hover { color: var(--accent); }
 
@@ -133,10 +134,13 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: .95em; }
   .site-footer { justify-content: center; } .privacy-statement { font-size: 10px; text-align: center; } .version-links { justify-content: center; font-size: 10px; }
   .toast { bottom: calc(16px + env(safe-area-inset-bottom)); max-width: calc(100vw - 24px); }
 }
-.scanner-workspace.has-sheet { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px; }
-.scanner-workspace.has-sheet.sheet-open { grid-template-rows: minmax(150px, .8fr) minmax(0, 1.2fr); }
-.has-sheet .details-panel.is-peek { max-height: 32dvh; }
-.has-sheet .details-body { padding: 10px 12px 12px; gap: 16px; }
+/* Portrait phones: pure media query so the single-column layout holds before hydration; JS only toggles peek/open. */
+@media (max-width: 700px) and (min-height: 501px) {
+  .scanner-workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px; }
+  .scanner-workspace.sheet-open { grid-template-rows: minmax(150px, .8fr) minmax(0, 1.2fr); }
+  .details-panel.is-peek { max-height: 32dvh; }
+  .details-body { padding: 10px 12px 12px; gap: 16px; }
+}
 .details-panel.is-peek .result-raw { max-height: 4.8em; font-size: 14px; }
 .details-panel.is-peek .result-fields > div:nth-child(n + 3) { display: none; }
 .details-panel.is-peek .empty-result { padding: 6px 0; }

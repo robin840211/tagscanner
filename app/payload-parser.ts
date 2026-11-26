@@ -15,6 +15,8 @@ const copy = (label: string, value: string): PayloadAction => ({ kind: 'copy', l
 const prefix = (text: string, name: string) => text.slice(0, name.length).toLowerCase() === name.toLowerCase() ? text.slice(name.length) : null;
 const decode = (value: string) => { try { return decodeURIComponent(value); } catch { return value; } };
 const phone = (value: string) => value.replace(/[^\d+*#]/g, '');
+// '#' would start a URL fragment and cut the number short in tel:/sms: links.
+const dialable = (value: string) => value.replace(/#/g, '%23');
 const query = (value: string) => Object.fromEntries(value.split('&').filter(Boolean).map(pair => {
   const index = pair.indexOf('=');
   return [(index < 0 ? pair : pair.slice(0, index)).toLowerCase(), decode((index < 0 ? '' : pair.slice(index + 1)).replace(/\+/g, ' '))];
@@ -57,7 +59,7 @@ function parseWifi(rest: string) {
   if (!ssid) return null;
   const type = getRaw(pairs, 'T').trim().toUpperCase();
   const password = getRaw(pairs, 'P');
-  const fields = [field('網路名稱', ssid), field('加密', /^(WPA\d?|SAE)$/.test(type) ? 'WPA' : type === 'WEP' ? 'WEP' : '無')];
+  const fields = [field('網路名稱', ssid), field('加密', /^(WPA|SAE)/.test(type) || type === 'WEP' ? type : type === 'NOPASS' || !password ? '無' : '未標示')];
   if (password) fields.push(field('密碼', password, true));
   if (getRaw(pairs, 'H').trim().toLowerCase() === 'true') fields.push(field('隱藏網路', '是'));
   return make('wifi', fields, password ? [copy('複製密碼', password)] : []);
@@ -65,7 +67,7 @@ function parseWifi(rest: string) {
 
 function parseTel(number: string) {
   const clean = phone(decode(number.trim()));
-  return /\d/.test(clean) ? make('tel', [field('號碼', clean)], [open('撥打', 'tel:' + clean), copy('複製號碼', clean)]) : null;
+  return /\d/.test(clean) ? make('tel', [field('號碼', clean)], [open('撥打', 'tel:' + dialable(clean)), copy('複製號碼', clean)]) : null;
 }
 
 function buildEmail(to: string, subject = '', body = '') {
@@ -90,7 +92,7 @@ function buildSms(number: string, message = '') {
   if (!/\d/.test(clean)) return null;
   const fields = [field('號碼', clean)];
   if (message) fields.push(field('內容', message));
-  return make('sms', fields, [open('傳簡訊', withQuery('sms:' + clean, [['body', message]]))]);
+  return make('sms', fields, [open('傳簡訊', withQuery('sms:' + dialable(clean), [['body', message]]))]);
 }
 const parseSmsto = (rest: string) => buildSms(...splitAt(rest, ':'));
 function parseSms(rest: string) {
@@ -118,7 +120,7 @@ function buildContact({ name, phones, emails, org, urls }: Contact) {
   if (!fields.length) return null;
   const actions: PayloadAction[] = [];
   const dial = phones.map(phone).find(value => /\d/.test(value));
-  if (dial) actions.push(open('撥打', 'tel:' + dial));
+  if (dial) actions.push(open('撥打', 'tel:' + dialable(dial)));
   if (emails[0] && !/[\s<>]/.test(emails[0])) actions.push(open('寫信', mailtoUrl(emails[0])));
   const url = urls.find(isSafeWebUrl);
   if (url) actions.push(open('開啟網址', new URL(url).href));

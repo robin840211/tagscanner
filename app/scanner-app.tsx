@@ -56,8 +56,8 @@ const labelBudget = (compact: boolean, still: boolean) => still ? Infinity : com
 const cameraErrors: Record<string, string> = {
   NotAllowedError: '相機權限被拒絕，請在瀏覽器網站設定中允許使用相機。',
   NotFoundError: '找不到相機，可改用圖片辨識。',
-  NotReadableError: '相機正被其他程式使用，請關閉後重試。',
-  OverconstrainedError: '此鏡頭無法使用，請切換其他鏡頭。',
+  NotReadableError: '相機正被其他程式使用或無法開啟，請關閉其他程式後重試。',
+  OverconstrainedError: '此鏡頭無法使用，已改回預設鏡頭，請重新開啟相機。',
 };
 
 function Icon({ children }: { children: ReactNode }) {
@@ -105,6 +105,8 @@ export default function ScannerApp() {
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const advancedRef = useRef<HTMLDetailsElement>(null);
+  const promptButton = useRef<HTMLButtonElement>(null);
+  const focusPrompt = useRef(false);
   const stream = useRef<MediaStream | null>(null);
   const streamEpoch = useRef(0);
   const generation = useRef(0);
@@ -275,6 +277,8 @@ export default function ScannerApp() {
     } catch (error) {
       if (!alive.current || token !== streamEpoch.current) return;
       stopCamera(); setCameraState('error');
+      // A lens that cannot open must not stay selected, or every retry would request it again.
+      if (requestedDevice) setDeviceId('');
       setNotice(error instanceof DOMException ? cameraErrors[error.name] ?? '相機開啟失敗，請重試。' : '相機需要 HTTPS 或 localhost 連線；目前仍可使用圖片辨識。');
     }
   }, [clearPreview, stopCamera]);
@@ -321,6 +325,11 @@ export default function ScannerApp() {
     schedule();
     return () => { cancelled = true; if (nativeFrames) video.cancelVideoFrameCallback(callback); else cancelAnimationFrame(callback); };
   }, [accept, cameraState, clearOverlay, decode, frozen]);
+
+  useEffect(() => {
+    // The stop button unmounts when the camera stops; hand keyboard focus to the prompt instead of <body>.
+    if (focusPrompt.current && cameraState === 'off' && !preview) { focusPrompt.current = false; promptButton.current?.focus(); }
+  }, [cameraState, preview]);
 
   const toggleFreeze = () => {
     const video = videoRef.current; if (!video || cameraState !== 'scanning') return;
@@ -455,7 +464,7 @@ export default function ScannerApp() {
   const clearHistory = () => {
     const snapshot = { history, selected };
     setHistory([]); setSelected(null); tracker.current.reset();
-    showToast({ text: '已清除紀錄', action: { label: '復原', run: () => { setHistory(snapshot.history); setSelected(snapshot.selected); setToast(null); } } });
+    showToast({ text: '已清除紀錄', action: { label: '復原', run: () => { setHistory(current => [...current, ...snapshot.history].slice(0, 100)); setSelected(current => current ?? snapshot.selected); setToast(null); } } });
   };
   const selectEntry = (entry: Entry) => {
     if (config.group === 'marker') setSelectedMarker(current => current?.key === keyOf(entry) ? null : { key: keyOf(entry), index: -1 });
@@ -495,7 +504,7 @@ export default function ScannerApp() {
     : <button key={action.label} type="button" className={primary ? 'is-primary' : undefined} onClick={() => void copyText(action.value, '已複製')}>{action.label}</button>;
 
   return (
-    <div className={'scanner-workspace' + (sheet ? ' has-sheet' : '') + (sheetOpen ? ' sheet-open' : '')} onDragOver={onDragOver} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }} onDrop={onDrop}>
+    <div className={'scanner-workspace' + (sheet && sheetOpen ? ' sheet-open' : '')} onDragOver={onDragOver} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }} onDrop={onDrop}>
       <section className="camera-panel" aria-label="掃描器">
         <div className="mode-bar">
           <div className="segmented" role="group" aria-label="掃描類型">
@@ -524,19 +533,19 @@ export default function ScannerApp() {
             <img src={preview} alt="待辨識圖片" className="scanner-media" />
           )}
           <canvas ref={overlayRef} className="scanner-overlay" aria-hidden="true" data-shapes={overlay?.shapes.length ?? 0} />
-          <p className="status-chip" role="status" hidden={!live && !preview}>
+          <p className={'status-chip' + (live || preview ? '' : ' sr-only')} role="status">
             {notice}{showMetrics && live && !frozen && <span className="metrics"> · {metrics.video} fps · 辨識 {metrics.decode}/s</span>}
           </p>
           {!live && !preview && <div className="camera-prompt">
             <LogoMark className="prompt-mark" />
             <p>開啟相機掃描，或選擇圖片</p>
-            <button className="primary-action" type="button" disabled={cameraState === 'starting'} onClick={() => void startCamera(deviceId)}>{cameraState === 'starting' ? '開啟中…' : '開啟相機'}</button>
+            <button ref={promptButton} className="primary-action" type="button" disabled={cameraState === 'starting'} onClick={() => void startCamera(deviceId)}>{cameraState === 'starting' ? '開啟中…' : '開啟相機'}</button>
             {notice && cameraState !== 'starting' && <p className={cameraState === 'error' ? 'prompt-error' : 'prompt-note'}>{notice}</p>}
             {!compact && <p className="prompt-note">也可以把圖片拖放到這裡，或直接貼上（Ctrl+V）</p>}
           </div>}
           {dragging && <div className="drop-hint">放開以辨識圖片</div>}
           <div className="viewfinder-toolbar" onClick={event => event.stopPropagation()}>
-            {live ? <ToolButton label="停止相機" icon={icons.stop} onClick={() => { stopCamera(); setNotice('相機已停止'); }} />
+            {live ? <ToolButton label="停止相機" icon={icons.stop} onClick={() => { focusPrompt.current = true; stopCamera(); setNotice('相機已停止'); }} />
               : preview ? <ToolButton label="開啟相機" icon={icons.camera} onClick={() => void startCamera(deviceId)} /> : null}
             <ToolButton label="選擇圖片" icon={icons.image} onClick={() => fileRef.current?.click()} />
             {live && <ToolButton label={frozen ? '繼續掃描' : '暫停畫面'} icon={frozen ? icons.play : icons.pause} pressed={frozen} onClick={toggleFreeze} />}

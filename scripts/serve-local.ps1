@@ -10,22 +10,32 @@ param(
   [switch]$LocalOnly
 )
 $ErrorActionPreference = 'Stop'
-Set-Location (Split-Path -Parent $PSScriptRoot)
-
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw '找不到 Node.js，請先安裝。' }
-if (-not (Test-Path node_modules)) {
-  Write-Host '安裝依賴套件…'
-  npm ci --no-audit --no-fund
-  if ($LASTEXITCODE -ne 0) { throw 'npm ci 失敗' }
-}
-if (-not $NoBuild) {
-  Write-Host '建置靜態網站…'
-  # Local builds serve from the site root, not the GitHub Pages sub-path.
-  Remove-Item Env:PAGES_BASE_PATH, Env:NEXT_PUBLIC_BASE_PATH -ErrorAction SilentlyContinue
-  npm run build
-  if ($LASTEXITCODE -ne 0) { throw 'npm run build 失敗' }
-}
 
-$serveArgs = @('scripts/serve-local.mjs', '--port', $Port, '--host', $(if ($LocalOnly) { '127.0.0.1' } else { '0.0.0.0' }))
-if ($Https) { $serveArgs += '--https' }
-node @serveArgs
+# Keep the caller's directory and environment intact, including after Ctrl+C.
+$savedEnv = @{ PAGES_BASE_PATH = $env:PAGES_BASE_PATH; NEXT_PUBLIC_BASE_PATH = $env:NEXT_PUBLIC_BASE_PATH }
+Push-Location (Split-Path -Parent $PSScriptRoot)
+try {
+  if (-not (Test-Path node_modules)) {
+    Write-Host '安裝依賴套件…'
+    npm ci --no-audit --no-fund
+    if ($LASTEXITCODE -ne 0) { throw 'npm ci 失敗' }
+  }
+  if (-not $NoBuild) {
+    Write-Host '建置靜態網站…'
+    # Local builds serve from the site root, not the GitHub Pages sub-path.
+    $env:PAGES_BASE_PATH = $null
+    $env:NEXT_PUBLIC_BASE_PATH = $null
+    npm run build
+    if ($LASTEXITCODE -ne 0) { throw 'npm run build 失敗' }
+  }
+
+  $serveArgs = @('scripts/serve-local.mjs', '--port', $Port, '--host', $(if ($LocalOnly) { '127.0.0.1' } else { '0.0.0.0' }))
+  if ($Https) { $serveArgs += '--https' }
+  node @serveArgs
+}
+finally {
+  $env:PAGES_BASE_PATH = $savedEnv.PAGES_BASE_PATH
+  $env:NEXT_PUBLIC_BASE_PATH = $savedEnv.NEXT_PUBLIC_BASE_PATH
+  Pop-Location
+}
