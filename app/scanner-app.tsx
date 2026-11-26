@@ -29,7 +29,7 @@ const cameraErrors: Record<string, string> = {
 };
 
 export default function ScannerApp() {
-  const [config, setConfig] = useState<Config>({ mode: 'auto', family: 'ARUCO', extended: false });
+  const [config, setConfig] = useState<Config>({ mode: 'auto', family: 'DICT_4X4_50', extended: false });
   const configRef = useRef(config);
   const [cameraState, setCameraState] = useState<CameraState>('off');
   const [notice, setNotice] = useState('將條碼或標記放入畫面');
@@ -61,7 +61,7 @@ export default function ScannerApp() {
   const tracker = useRef(new ScanTracker());
   const barcode = useRef<BarcodeDetector | null>(null);
   const april = useRef<AprilTagDetector | null>(null);
-  const aruco = useRef(new Map<ArucoFamily, Promise<ArucoDetector>>());
+  const aruco = useRef(new Map<string, Promise<ArucoDetector>>());
 
   const clearOverlay = useCallback(() => {
     if (overlayTimer.current) clearTimeout(overlayTimer.current);
@@ -85,15 +85,24 @@ export default function ScannerApp() {
   const decode = useCallback(async (frame: ImageData, options: Config, exhaustive: boolean): Promise<Detection[]> => {
     const { width, height, data } = frame;
     if (options.mode === 'aruco') {
-      let pending = aruco.current.get(options.family);
-      if (!pending) { pending = createArucoDetector(options.family); aruco.current.set(options.family, pending); }
+      const cacheKey = options.family.startsWith('DICT_') ? 'opencv' : options.family;
+      let pending = aruco.current.get(cacheKey);
+      if (!pending) {
+        aruco.current.forEach(previous => { void previous.then(detector => detector.free()).catch(() => {}); });
+        aruco.current.clear();
+        pending = createArucoDetector(options.family); aruco.current.set(cacheKey, pending);
+      }
       try {
         const detector = await pending;
-        return detector.detect(width, height, data).map(marker => ({
+        return (await detector.detect(width, height, data, options.family)).map(marker => ({
           text: String(marker.id), format: 'ArUco ' + ARUCO_FAMILY_DEFINITIONS[options.family].label,
           points: marker.corners, opencvDictionary: ARUCO_FAMILY_DEFINITIONS[options.family].opencvDictionary,
         }));
-      } catch (error) { aruco.current.delete(options.family); throw error; }
+      } catch (error) {
+        aruco.current.delete(cacheKey);
+        void pending.then(detector => detector.free()).catch(() => {});
+        throw error;
+      }
     }
     if (options.mode === 'apriltag') {
       const detector = april.current ?? (april.current = new AprilTagDetector());
@@ -222,7 +231,8 @@ export default function ScannerApp() {
       lastAttempt = now;
       const options = { ...configRef.current }, token = generation.current;
       const exhaustive = ++attempts % 8 === 0;
-      const edge = options.mode === 'aruco' || options.mode === 'apriltag' ? 960 : exhaustive ? 1920 : 1280;
+      const legacyTag = options.mode === 'apriltag' || (options.mode === 'aruco' && !options.family.startsWith('DICT_'));
+      const edge = legacyTag ? 960 : exhaustive ? 1920 : 1280;
       const scale = Math.min(1, edge / Math.max(video.videoWidth, video.videoHeight));
       canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
       canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
@@ -274,6 +284,7 @@ export default function ScannerApp() {
       const scale = Math.min(canvas.width / overlay.width, canvas.height / overlay.height);
       const ox = (canvas.width - overlay.width * scale) / 2, oy = (canvas.height - overlay.height * scale) / 2;
       context.strokeStyle = '#c8ff32'; context.lineWidth = 2 * ratio;
+      const tagCount = overlay.shapes.filter(shape => shape.opencvDictionary).length;
       for (const shape of overlay.shapes) {
         context.beginPath();
         shape.points.forEach((point, index) => {
@@ -282,6 +293,19 @@ export default function ScannerApp() {
         });
         if (shape.points.length > 2) context.closePath();
         context.stroke();
+        if (shape.opencvDictionary && tagCount <= 3 && shape.points.length) {
+          const label = `ID ${shape.text}`;
+          context.font = `600 ${14 * ratio}px system-ui`;
+          context.textBaseline = 'middle';
+          const padding = 5 * ratio, height = 24 * ratio;
+          const width = context.measureText(label).width + padding * 2;
+          const left = ox + Math.min(...shape.points.map(point => point.x)) * scale;
+          const top = oy + Math.min(...shape.points.map(point => point.y)) * scale;
+          const x = Math.max(0, Math.min(canvas.width - width, left));
+          const y = Math.max(0, Math.min(canvas.height - height, top >= height + padding ? top - height - padding : top + padding));
+          context.fillStyle = '#182219'; context.fillRect(x, y, width, height);
+          context.fillStyle = '#c8ff32'; context.fillText(label, x + padding, y + height / 2);
+        }
       }
     };
     draw(); const observer = new ResizeObserver(draw); observer.observe(canvas);
@@ -380,7 +404,7 @@ export default function ScannerApp() {
           {!history.length && <p className="muted">尚無掃描紀錄</p>}
           {pageCount > 1 && <div className="pagination"><button disabled={activePage === 0} onClick={() => setHistoryPage(activePage - 1)}>上一頁</button><span>{activePage + 1} / {pageCount}</span><button disabled={activePage + 1 >= pageCount} onClick={() => setHistoryPage(activePage + 1)}>下一頁</button></div>}
         </div>}
-        {tab === 'formats' && <div className="formats-content"><p><strong>2D</strong>QR · Data Matrix · Aztec · PDF417</p><p><strong>1D</strong>EAN · UPC · Code 39 / 93 / 128 · ITF · Codabar</p><p><strong>TAG</strong>ArUco Original / MIP 36h12 · AprilTag 36h11</p><p className="muted">Micro QR 與 DataBar 可從「擴充格式」開啟。</p></div>}
+        {tab === 'formats' && <div className="formats-content"><p><strong>2D</strong>QR · Data Matrix · Aztec · PDF417</p><p><strong>1D</strong>EAN · UPC · Code 39 / 93 / 128 · ITF · Codabar</p><p><strong>TAG</strong>ArUco 4×4 / 5×5（50、100、250、1000）· Original / MIP 36h12 · AprilTag 36h11</p><p className="muted">ChArUco 棋盤請選 ArUco 與對應字典。Micro QR 與 DataBar 可從「擴充格式」開啟。</p></div>}
       </aside>
     </div>
   );

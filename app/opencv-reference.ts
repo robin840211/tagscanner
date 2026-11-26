@@ -1,4 +1,5 @@
 export type OpenCvDictionaryName =
+  | `DICT_${'4X4' | '5X5'}_${50 | 100 | 250 | 1000}`
   | 'DICT_ARUCO_ORIGINAL'
   | 'DICT_ARUCO_MIP_36h12'
   | 'DICT_APRILTAG_36h11';

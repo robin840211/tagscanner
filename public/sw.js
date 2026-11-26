@@ -1,6 +1,6 @@
 const scopeUrl = new URL('./', self.registration.scope);
 const CACHE_PREFIX = 'tagscanner-' + scopeUrl.pathname + '-';
-const CACHE_NAME = CACHE_PREFIX + 'v6';
+const CACHE_NAME = CACHE_PREFIX + 'v7';
 const coreAssets = [
   scopeUrl.href,
   new URL('manifest.webmanifest', scopeUrl).href,

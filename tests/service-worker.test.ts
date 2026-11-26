@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const origin = 'https://example.com';
 const scope = origin + '/tagscanner/';
-const currentName = 'tagscanner-/tagscanner/-v6';
+const currentName = 'tagscanner-/tagscanner/-v7';
 const script = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
 
 function harness() {

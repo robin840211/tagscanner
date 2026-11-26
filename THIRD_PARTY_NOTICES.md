@@ -5,8 +5,9 @@ TagScanner includes the following direct runtime dependencies:
 | Package | Version | License | Project |
 |---|---:|---|---|
 | @ar-js-org/aruco-rs | 0.1.0 | MIT | https://github.com/AR-js-org/aruco-rs |
+| @techstark/opencv-js | 5.0.0-release.1 | Apache-2.0 | https://github.com/TechStark/opencv-js |
 | zxing-wasm | 3.1.6 | MIT / Apache-2.0 | https://github.com/Sec-ant/zxing-wasm |
-| next | 16.4.3 | MIT | https://github.com/vercel/next.js |
+| next | 16.4.6 | MIT | https://github.com/vercel/next.js |
 | react | 19.3.1 | MIT | https://github.com/facebook/react |
 | react-dom | 19.3.1 | MIT | https://github.com/facebook/react |
 

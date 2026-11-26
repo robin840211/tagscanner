@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     'next-env.d.ts',
     'public/vendor/apriltag/apriltag_wasm.js',
     'public/vendor/barcode/worker.js',
+    'public/vendor/aruco/opencv.js',
     'outputs/**',
     'work/**',
   ]),

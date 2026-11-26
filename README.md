@@ -18,6 +18,7 @@ TagScanner 使用瀏覽器相機或圖片辨識常用條碼與視覺標記。辨
 - 掃描中直接切換模式，相機保持開啟
 - OpenCV `DICT_ARUCO_ORIGINAL` 與 `DICT_ARUCO_MIP_36h12`
 - ArUco 相機及圖片多標記辨識、ID 與邊界顯示
+- 畫面中有 1–3 個 Tag 時在框邊顯示 ID
 - OpenCV `DICT_APRILTAG_36h11` 相機及圖片多標記辨識
 - 辨識結果顯示 OpenCV 字典名稱，並可複製 Python 偵測範例
 - 四角辨識邊界疊圖；標記離開畫面後框線自動消失
@@ -25,9 +26,9 @@ TagScanner 使用瀏覽器相機或圖片辨識常用條碼與視覺標記。辨
 - 工作階段最近 100 筆掃描紀錄與 JSON 匯出；持續出現的同一標記保留一筆
 - 響應式手機、平板與桌面版面
 
-ArUco 與 AprilTag 功能目前標示為 Beta。主要建議使用 `DICT_ARUCO_ORIGINAL` 或 `DICT_APRILTAG_36h11`。MIP 36h12 保留作為既有相容選項。
+ArUco 支援 `DICT_4X4_50/100/250/1000`、`DICT_5X5_50/100/250/1000`、`DICT_ARUCO_ORIGINAL` 與 `DICT_ARUCO_MIP_36h12`。AprilTag 支援 `DICT_APRILTAG_36h11`。
 
-目前尚未支援 OpenCV 的 4×4、5×5、6×6、7×7 ArUco 字典，也未支援 AprilTag 16h5、25h9、36h10。介面不會將這些格式標示為可辨識。
+辨識 ChArUco 棋盤時，選擇「ArUco」與棋盤使用的字典，即可讀取各標記的 ID 和四角位置。4×4、5×5 表示標記內部的資料格數；50、100、250、1000 表示字典容量。相同格數的這四組字典共用前段 ID，已知產生設定時選用相同容量。
 
 ## 隱私
 

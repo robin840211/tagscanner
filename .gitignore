@@ -40,3 +40,6 @@ next-env.d.ts
 /public/vendor/barcode/worker.js
 /public/vendor/barcode/zxing_reader.wasm
 /public/vendor/barcode/LICENSE.zxing-wasm
+/public/vendor/aruco/opencv.js
+/public/vendor/aruco/LICENSE.opencv-js
+/.codex-attachments/
