@@ -36,6 +36,7 @@ next-env.d.ts
 /dist/
 /.wrangler/
 /outputs/
+/.local-cert/
 /work/
 /public/vendor/barcode/worker.js
 /public/vendor/barcode/zxing_reader.wasm

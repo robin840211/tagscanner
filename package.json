@@ -10,7 +10,7 @@
     "prebuild": "node scripts/prepare-barcode-worker.mjs",
     "dev": "next dev",
     "build": "next build",
-    "start": "npx serve out",
+    "start": "node scripts/serve-local.mjs",
     "lint": "eslint . --ignore-pattern out --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
