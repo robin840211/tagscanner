@@ -24,6 +24,21 @@
 - 瀏覽器：六張原尺寸照片分別精確解出 17/27/20/1/1/35 個；3 個標記顯示 ID、4 個只畫框；實拍 ID3 框邊標字正常；AprilTag 00/01 參考圖以實際 AprilTag worker 解出正確 ID；1280×720 無頁面溢出、console 無錯誤。這是照片／瀏覽器證據，尚未重新測實機相機。
 - 最終 Opus 複審 8db12e8fc9c51d77bdb13b259f62ad88（同 review session、實際 claude-opus-5-5）gate PASS、無 findings。最終 lint、typecheck、19 項相關測試及 Next 16.4.6 靜態建置通過；本階段提交本機，不 push。
 
+### UI redesign（branch feat/ui-redesign，worktree D:/GitProject/tagscanner-ui）
+
+- 使用者確認整體方向：模式改為「掃碼／定位標記」兩類、依內容類型的結果卡、標記即時清單、暫停畫面、拖放／貼上圖片、手機底部抽屜、用語統一。相機維持「使用者按下才開」，不自動開啟。
+- 標記 ID 標籤：即時畫面手機上限 3、桌面 12，太小（短邊 < 28px）不標；暫停畫面與圖片顯示全部。全部 ID 另列於右側／抽屜清單，可點選高亮。
+- 分工：Sonnet 子代理實作 `app/payload-parser.ts`（30 項測試，cherry-pick 979807c）；Opus 唯讀評估解碼穩定度；主 session 實作介面、整合與瀏覽器驗證；Opus 獨立審查最終 diff。
+- 解碼評估（僅評估，本輪不改）：彩色／反相／傾斜處理穩定、無正確性問題。建議小修：ITF/Codabar/Code39 也要求連續 2 次才記錄、一般影格交替跑反相與通道 pass 降低閒置成本、疊圖過期改為依解碼時間、減少每影格 ImageData 複製；實機耗時與發票 Big5 編碼待驗證。
+- 本機測試：`scripts/serve-local.ps1`（預設 0.0.0.0:4173，`-Https` 產生含區網 IP 的自簽憑證供手機相機使用）。本機預設 Node 為 v20 可建置；vitest 需 Node 24。
+- Opus 獨立審查：無高嚴重度問題，10 項中低問題全數修正——失敗鏡頭改回預設避免無法重試、相機錯誤保留 live region 朗讀、手機單欄改純 media query（hydration 前不擠壓）、本機伺服器讀檔錯誤不崩潰與憑證到期自動重建、復原紀錄合併期間新掃描、`tel:` 的 `#` 編碼、WPA2-EAP 加密顯示、PowerShell 啟動腳本還原目錄與環境變數、停止相機後焦點移至開啟按鈕。
+- 驗證：lint、typecheck、110 項測試、靜態建置通過；啟動腳本實測 HTTPS（含區網 IP 憑證）、重建期間伺服器不中斷；瀏覽器以合成圖片與模擬相機串流驗證 1280×800 與 375×812 的掃碼、選取、標記清單、暫停與標籤上限。尚未在實機相機測試。
+- 合併 main（7ddc502 標記方向箭頭、ArUco 全面改用 OpenCV、移除 aruco-rs）：衝突只在 `scanner-app.tsx`，保留新介面並移植方向箭頭為定位標記模式工具列的「標示方向」切換；採 main 的單一 OpenCV 路線，不混用函式庫。
+- 顏色：外框維持綠色（同 OpenCV drawDetectedMarkers），選取改為橘色（Blender／Unity 的選取慣例），方向箭頭維持 main 的青色，三者不再撞色。
+- 鏡頭切換：手機／平板只用標準 `facingMode`（`getSettings()` 讀目前方向、`{ exact }` 切換），不再比對鏡頭名稱；前後各有鏡頭時顯示單一「切換到前／後鏡頭」按鈕，切換失敗退回原方向並提示；桌機鏡頭無 facingMode 時保留裝置下拉選單。多鏡頭（超廣角／長焦）選擇暫不處理。
+- Opus 審查合併與鏡頭切換：合併無遺漏；修正 5 項——切換途中改選圖片或頁面進背景不再誤判失敗並重開相機、內建鏡頭加 USB 鏡頭時可在「進階 → 指定鏡頭」選擇、目前鏡頭改為右上獨立標籤（不閃爍、不反覆朗讀）、切換失敗依錯誤類型提示、切換後鍵盤焦點回到切換按鈕。
+- 驗證：lint、typecheck、116 項測試、靜態建置通過；模擬相機驗證前後切換、無前鏡頭退回、切換中途選圖、內建＋USB 鏡頭、桌機下拉、方向箭頭隨旋轉、選取橘色高亮。尚未實機測試。
+
 ## Status
 
 - 網站：https://robin840211.github.io/tagscanner/ ；單一 repo `robin840211/tagscanner`，推送 `main` 會由 Deploy GitHub Pages workflow 驗證（lint、typecheck、test、build）並發布。
