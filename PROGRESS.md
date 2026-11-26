@@ -24,6 +24,16 @@
 - 瀏覽器：六張原尺寸照片分別精確解出 17/27/20/1/1/35 個；3 個標記顯示 ID、4 個只畫框；實拍 ID3 框邊標字正常；AprilTag 00/01 參考圖以實際 AprilTag worker 解出正確 ID；1280×720 無頁面溢出、console 無錯誤。這是照片／瀏覽器證據，尚未重新測實機相機。
 - 最終 Opus 複審 8db12e8fc9c51d77bdb13b259f62ad88（同 review session、實際 claude-opus-5-5）gate PASS、無 findings。最終 lint、typecheck、19 項相關測試及 Next 16.4.6 靜態建置通過；本階段提交本機，不 push。
 
+### UI redesign（branch feat/ui-redesign，worktree D:/GitProject/tagscanner-ui）
+
+- 使用者確認整體方向：模式改為「掃碼／定位標記」兩類、依內容類型的結果卡、標記即時清單、暫停畫面、拖放／貼上圖片、手機底部抽屜、用語統一。相機維持「使用者按下才開」，不自動開啟。
+- 標記 ID 標籤：即時畫面手機上限 3、桌面 12，太小（短邊 < 28px）不標；暫停畫面與圖片顯示全部。全部 ID 另列於右側／抽屜清單，可點選高亮。
+- 分工：Sonnet 子代理實作 `app/payload-parser.ts`（30 項測試，cherry-pick 979807c）；Opus 唯讀評估解碼穩定度；主 session 實作介面、整合與瀏覽器驗證；Opus 獨立審查最終 diff。
+- 解碼評估（僅評估，本輪不改）：彩色／反相／傾斜處理穩定、無正確性問題。建議小修：ITF/Codabar/Code39 也要求連續 2 次才記錄、一般影格交替跑反相與通道 pass 降低閒置成本、疊圖過期改為依解碼時間、減少每影格 ImageData 複製；實機耗時與發票 Big5 編碼待驗證。
+- 本機測試：`scripts/serve-local.ps1`（預設 0.0.0.0:4173，`-Https` 產生含區網 IP 的自簽憑證供手機相機使用）。本機預設 Node 為 v20 可建置；vitest 需 Node 24。
+- Opus 獨立審查：無高嚴重度問題，10 項中低問題全數修正——失敗鏡頭改回預設避免無法重試、相機錯誤保留 live region 朗讀、手機單欄改純 media query（hydration 前不擠壓）、本機伺服器讀檔錯誤不崩潰與憑證到期自動重建、復原紀錄合併期間新掃描、`tel:` 的 `#` 編碼、WPA2-EAP 加密顯示、PowerShell 啟動腳本還原目錄與環境變數、停止相機後焦點移至開啟按鈕。
+- 驗證：lint、typecheck、110 項測試、靜態建置通過；啟動腳本實測 HTTPS（含區網 IP 憑證）、重建期間伺服器不中斷；瀏覽器以合成圖片與模擬相機串流驗證 1280×800 與 375×812 的掃碼、選取、標記清單、暫停與標籤上限。尚未在實機相機測試。
+
 ## Status
 
 - 網站：https://robin840211.github.io/tagscanner/ ；單一 repo `robin840211/tagscanner`，推送 `main` 會由 Deploy GitHub Pages workflow 驗證（lint、typecheck、test、build）並發布。
