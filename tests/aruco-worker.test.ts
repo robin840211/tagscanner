@@ -3,6 +3,8 @@ import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import fixtures from './fixtures/aruco-bits.json';
+import legacyFixtures from './fixtures/aruco-legacy-bits.json';
+import { getTagDirection } from '../app/tag-orientation';
 import { ArucoWorkerClient } from '../app/aruco-worker-client';
 import { createArucoDetector } from '../app/aruco-engine';
 
@@ -45,7 +47,30 @@ describe('OpenCV ArUco worker', () => {
         expect(result.ok).toBe(true);
         expect(result.result?.map(marker => marker.id)).toEqual([id]);
         expect(result.result?.[0].corners).toHaveLength(4);
+        const direction = getTagDirection(result.result![0].corners, 'DICT_4X4_50')!;
+        const dx = direction!.tip.x - direction!.center.x, dy = direction!.tip.y - direction!.center.y;
+        const length = Math.hypot(dx, dy);
+        expect(dx / length, JSON.stringify({ family: result.result?.[0]?.id, rotation, corners: result.result?.[0]?.corners })).toBeCloseTo(Math.sin(rotation * Math.PI / 2), 3);
+        expect(dy / length).toBeCloseTo(-Math.cos(rotation * Math.PI / 2), 3);
       }
+    }
+  });
+  it('decodes Original and MIP IDs with consistent orientation', async () => {
+    const detect = await harness();
+    for (const fixture of legacyFixtures) for (let rotation = 0; rotation < 4; rotation++) {
+      const result = await detect({ ...markerFrame(fixture.bits, rotation), family: fixture.family });
+      expect(result.ok).toBe(true);
+      expect(result.result?.map(marker => marker.id)).toEqual([fixture.id]);
+      const direction = getTagDirection(result.result![0].corners, fixture.family === 'DICT_ARUCO_ORIGINAL' ? 'DICT_ARUCO_ORIGINAL' : 'DICT_ARUCO_MIP_36h12', fixture.id);
+      if (fixture.family === 'DICT_ARUCO_ORIGINAL' && fixture.id === 1023) {
+        expect(fixture.bits).toEqual(fixture.bits.toReversed().map(row => row.toReversed()));
+        expect(direction).toBeNull(); continue;
+      }
+      expect(direction).not.toBeNull();
+      const dx = direction!.tip.x - direction!.center.x, dy = direction!.tip.y - direction!.center.y;
+      const length = Math.hypot(dx, dy);
+      expect(dx / length, JSON.stringify({ family: result.result?.[0]?.id, rotation, corners: result.result?.[0]?.corners })).toBeCloseTo(Math.sin(rotation * Math.PI / 2), 3);
+      expect(dy / length).toBeCloseTo(-Math.cos(rotation * Math.PI / 2), 3);
     }
   });
   it('switches grid size and rejects invalid input and out-of-range IDs', async () => {
@@ -79,11 +104,11 @@ describe('ArUco worker lifecycle', () => {
     const detector = await createArucoDetector('DICT_4X4_50');
     const worker = FakeWorker.latest;
     worker.reply({ id: 1, ok: true });
-    for (const family of ['DICT_4X4_50', 'DICT_5X5_1000'] as const) {
+    for (const family of ['DICT_4X4_50', 'DICT_5X5_1000', 'ARUCO', 'ARUCO_MIP_36h12'] as const) {
       const detection = detector.detect(1, 1, new Uint8Array(4), family);
       await Promise.resolve();
       const request = worker.requests.at(-1)!;
-      expect(request.family).toBe(family);
+      expect(request.family).toBe(family === 'ARUCO' ? 'DICT_ARUCO_ORIGINAL' : family === 'ARUCO_MIP_36h12' ? 'DICT_ARUCO_MIP_36h12' : family);
       worker.reply({ id: request.id, ok: true, result: [] });
       await expect(detection).resolves.toEqual([]);
       expect(FakeWorker.latest).toBe(worker);

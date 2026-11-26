@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 
-:root { color-scheme: dark; --bg: #101315; --panel: #191e20; --raised: #20272a; --line: #323a3e; --muted: #a4b0b3; --text: #f2f5f4; --accent: #c8ff32; --on-accent: #172000; --focus: #5fd4ff; --glass: rgb(8 11 12 / 72%); }
+:root { color-scheme: dark; --bg: #101315; --panel: #191e20; --raised: #20272a; --line: #323a3e; --muted: #a4b0b3; --text: #f2f5f4; --accent: #c8ff32; --on-accent: #172000; --focus: #5fd4ff; --selected: #ffa31a; --glass: rgb(8 11 12 / 72%); }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-width: 300px; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, 'Segoe UI', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif; }
 button, input, select { font: inherit; }
@@ -99,10 +99,10 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: .95em; }
 .marker-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
 .marker-list button { width: 100%; display: grid; justify-items: start; gap: 2px; text-align: left; padding: 7px 10px; }
 .marker-list strong { font-size: 15px; font-variant-numeric: tabular-nums; }
-.marker-list button[aria-pressed='true'] { background: #0b2a36; border-color: var(--focus); color: var(--text); }
+.marker-list button[aria-pressed='true'] { background: #2e1f05; border-color: var(--selected); color: var(--selected); }
 .history-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .history-list button { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; text-align: left; gap: 4px 8px; padding: 9px 11px; justify-items: start; }
-.history-list button[aria-current='true'] { border-color: var(--accent); }
+.history-list button[aria-current='true'] { border-color: var(--selected); }
 .history-format { font-size: 11px; color: var(--accent); }
 .history-list time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .history-text { grid-column: 1 / -1; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

@@ -7,6 +7,7 @@ let refinement;
 let family;
 const families = new Set([
   'DICT_4X4_50', 'DICT_4X4_100', 'DICT_4X4_250', 'DICT_4X4_1000',
+  'DICT_ARUCO_ORIGINAL', 'DICT_ARUCO_MIP_36h12',
   'DICT_5X5_50', 'DICT_5X5_100', 'DICT_5X5_250', 'DICT_5X5_1000',
 ]);
 

@@ -12,6 +12,7 @@ import { parsePayload } from './payload-parser';
 import type { PayloadAction } from './payload-parser';
 import { cameraNames, historyToCsv, pointInPolygon, polygonMinSide } from './scanner-utils';
 import { ScanTracker } from './scan-tracker';
+import { drawTagDirection } from './tag-orientation';
 import LogoMark from './logo-mark';
 
 type Group = 'code' | 'marker';
@@ -36,6 +37,8 @@ const familyGroups: { label: string; families: Family[] }[] = [
 ];
 const familyOption = (family: Family) => family === 'APRILTAG_36h11' ? 'AprilTag 36h11' : 'ArUco ' + ARUCO_FAMILY_DEFINITIONS[family].label;
 const dictionaryOf = (family: Family): OpenCvDictionaryName => family === 'APRILTAG_36h11' ? 'DICT_APRILTAG_36h11' : ARUCO_FAMILY_DEFINITIONS[family].opencvDictionary;
+// Orange marks the selected item, as in Blender and Unity; outlines stay green like OpenCV's drawDetectedMarkers.
+const SELECTED = '#ffa31a';
 const keyOf = (item: { format: string; text: string }) => item.format + '\u0000' + item.text;
 const timeOf = (at: number) => new Date(at).toLocaleTimeString('zh-TW', { hour12: false });
 // Structured payloads show a summary so secrets such as Wi-Fi passwords never appear in the list.
@@ -69,6 +72,7 @@ const icons = {
   image: <Icon><rect x="4" y="5" width="16" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m5 17 5-5 4 4 2-2 3 3" /></Icon>,
   pause: <Icon><path d="M9 6v12M15 6v12" /></Icon>,
   play: <Icon><path d="M8 6l10 6-10 6z" /></Icon>,
+  direction: <Icon><path d="M12 19V5M6 11l6-6 6 6" /></Icon>,
   torch: <Icon><path d="M8 3h8l-1 6H9zM9 9h6v4l-1.5 8h-3L9 13z" /></Icon>,
 };
 
@@ -95,6 +99,7 @@ export default function ScannerApp() {
   const [frozen, setFrozen] = useState(false);
   const [metrics, setMetrics] = useState({ video: 0, decode: 0 });
   const [showMetrics, setShowMetrics] = useState(false);
+  const [showOrientation, setShowOrientation] = useState(false);
   const [vibrate, setVibrate] = useState(true);
   const [compact, setCompact] = useState(false);
   const [sheet, setSheet] = useState(false);
@@ -153,7 +158,7 @@ export default function ScannerApp() {
     const { width, height, data } = frame;
     if (options.group === 'marker' && options.family !== 'APRILTAG_36h11') {
       const family = options.family;
-      const cacheKey = family.startsWith('DICT_') ? 'opencv' : family;
+      const cacheKey = 'opencv';
       let pending = aruco.current.get(cacheKey);
       if (!pending) {
         aruco.current.forEach(previous => { void previous.then(detector => detector.free()).catch(() => {}); });
@@ -388,7 +393,7 @@ export default function ScannerApp() {
       let labels = 0;
       overlay.shapes.forEach((shape, shapeIndex) => {
         const focused = isPicked(highlight, overlay.shapes, shapeIndex);
-        context.strokeStyle = focused ? '#5fd4ff' : '#c8ff32'; context.lineWidth = (focused ? 4 : 2) * ratio;
+        context.strokeStyle = focused ? SELECTED : '#c8ff32'; context.lineWidth = (focused ? 4 : 2) * ratio;
         context.beginPath();
         shape.points.forEach((point, index) => {
           if (index === 0) context.moveTo(ox + point.x * scale, oy + point.y * scale);
@@ -396,6 +401,9 @@ export default function ScannerApp() {
         });
         if (shape.points.length > 2) context.closePath();
         context.stroke();
+        if (showOrientation && shape.opencvDictionary) {
+          drawTagDirection(context, shape.points.map(point => ({ x: ox + point.x * scale, y: oy + point.y * scale })), shape.opencvDictionary, ratio, Number(shape.text));
+        }
         const readable = polygonMinSide(shape.points) * scale >= minSide;
         if (!shape.opencvDictionary || !shape.points.length || !(focused || (readable && (tags.length <= budget || labels < budget)))) return;
         labels++;
@@ -408,13 +416,13 @@ export default function ScannerApp() {
         const top = oy + Math.min(...shape.points.map(point => point.y)) * scale;
         const x = Math.max(0, Math.min(canvas.width - width, left));
         const y = Math.max(0, Math.min(canvas.height - height, top >= height + padding ? top - height - padding : top + padding));
-        context.fillStyle = focused ? '#0b2a36' : '#182219'; context.fillRect(x, y, width, height);
-        context.fillStyle = focused ? '#5fd4ff' : '#c8ff32'; context.fillText(label, x + padding, y + height / 2);
+        context.fillStyle = focused ? '#2e1f05' : '#182219'; context.fillRect(x, y, width, height);
+        context.fillStyle = focused ? SELECTED : '#c8ff32'; context.fillText(label, x + padding, y + height / 2);
       });
     };
     draw(); const observer = new ResizeObserver(draw); observer.observe(canvas);
     return () => observer.disconnect();
-  }, [compact, frozen, highlight, overlay, preview]);
+  }, [compact, frozen, highlight, overlay, preview, showOrientation]);
 
   useEffect(() => {
     alive.current = true;
@@ -549,6 +557,7 @@ export default function ScannerApp() {
               : preview ? <ToolButton label="開啟相機" icon={icons.camera} onClick={() => void startCamera(deviceId)} /> : null}
             <ToolButton label="選擇圖片" icon={icons.image} onClick={() => fileRef.current?.click()} />
             {live && <ToolButton label={frozen ? '繼續掃描' : '暫停畫面'} icon={frozen ? icons.play : icons.pause} pressed={frozen} onClick={toggleFreeze} />}
+            {config.group === 'marker' && (live || preview) && <ToolButton label="標示方向" icon={icons.direction} pressed={showOrientation} onClick={() => setShowOrientation(!showOrientation)} />}
             {live && torchAvailable && <ToolButton label="手電筒" icon={icons.torch} pressed={torch} onClick={() => void toggleTorch()} />}
             {live && devices.length > 1 && <select className="camera-select" aria-label="選擇鏡頭" value={deviceId} onChange={event => { setDeviceId(event.target.value); void startCamera(event.target.value); }}>
               {devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{names[index]}</option>)}

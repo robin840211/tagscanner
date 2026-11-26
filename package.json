@@ -16,7 +16,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ar-js-org/aruco-rs": "0.1.0",
     "@techstark/opencv-js": "5.0.0-release.1",
     "next": "16.4.6",
     "react": "19.3.1",
