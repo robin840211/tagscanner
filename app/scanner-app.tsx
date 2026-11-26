@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { DragEvent, MouseEvent as ReactMouseEvent, ReactNode, Ref } from 'react';
 import { BarcodeDetector } from './barcode-engine';
 import { AprilTagDetector } from './apriltag-engine';
 import { ARUCO_FAMILY_DEFINITIONS, createArucoDetector } from './aruco-engine';
@@ -28,6 +28,8 @@ type Facing = 'environment' | 'user';
 // Phones and tablets switch by facingMode; a specific deviceId is only used where no facing is reported (desktop webcams).
 type CameraRequest = { facing: Facing; exact?: boolean } | { deviceId: string };
 const defaultCamera: CameraRequest = { facing: 'environment' };
+// 'superseded' means another camera action or a stop took over; callers must not treat it as a failure.
+type CameraResult = 'ok' | 'superseded' | 'failed';
 type Toast = { text: string; action?: { label: string; run: () => void } };
 
 const scopes: { id: Scope; label: string }[] = [
@@ -81,8 +83,8 @@ const icons = {
   torch: <Icon><path d="M8 3h8l-1 6H9zM9 9h6v4l-1.5 8h-3L9 13z" /></Icon>,
 };
 
-function ToolButton({ label, icon, pressed, onClick }: { label: string; icon: ReactNode; pressed?: boolean; onClick: () => void }) {
-  return <button type="button" className="tool-button" aria-pressed={pressed} title={label} onClick={onClick}>{icon}<span className="tool-label">{label}</span></button>;
+function ToolButton({ label, icon, pressed, onClick, ref }: { label: string; icon: ReactNode; pressed?: boolean; onClick: () => void; ref?: Ref<HTMLButtonElement> }) {
+  return <button ref={ref} type="button" className="tool-button" aria-pressed={pressed} title={label} onClick={onClick}>{icon}<span className="tool-label">{label}</span></button>;
 }
 
 export default function ScannerApp() {
@@ -118,7 +120,9 @@ export default function ScannerApp() {
   const fileRef = useRef<HTMLInputElement>(null);
   const advancedRef = useRef<HTMLDetailsElement>(null);
   const promptButton = useRef<HTMLButtonElement>(null);
-  const focusPrompt = useRef(false);
+  const flipButton = useRef<HTMLButtonElement>(null);
+  // Toolbar buttons unmount while the camera restarts; this says where keyboard focus should land afterwards.
+  const restoreFocus = useRef<'prompt' | 'flip' | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const streamEpoch = useRef(0);
   const generation = useRef(0);
@@ -259,8 +263,8 @@ export default function ScannerApp() {
     else if (frozenRef.current && video) { setNotice('已暫停，正在分析此畫面…'); void scanStill(video, video.videoWidth, video.videoHeight, 'camera', token); }
   };
 
-  // Resolves true once the camera is scanning; `silent` leaves failure reporting to the caller.
-  const startCamera = useCallback(async (requested: CameraRequest, silent = false) => {
+  // `silent` leaves failure reporting to the caller, which receives the DOMException name via onError.
+  const startCamera = useCallback(async (requested: CameraRequest, silent = false, onError?: (name: string) => void): Promise<CameraResult> => {
     stopCamera(); clearPreview();
     const token = streamEpoch.current;
     setCameraState('starting'); setNotice('正在開啟相機…');
@@ -272,12 +276,12 @@ export default function ScannerApp() {
           width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 },
         },
       });
-      if (!alive.current || token !== streamEpoch.current) { next.getTracks().forEach(track => track.stop()); return false; }
+      if (!alive.current || token !== streamEpoch.current) { next.getTracks().forEach(track => track.stop()); return 'superseded'; }
       stream.current = next;
       const video = videoRef.current;
-      if (!video) { next.getTracks().forEach(track => track.stop()); return false; }
+      if (!video) { next.getTracks().forEach(track => track.stop()); return 'superseded'; }
       video.srcObject = next; await video.play();
-      if (!alive.current || token !== streamEpoch.current) return false;
+      if (!alive.current || token !== streamEpoch.current) return 'superseded';
       const track = next.getVideoTracks()[0];
       track.onended = () => { if (stream.current === next) { stopCamera(); setNotice('相機已中斷，請重新開啟。'); } };
       const capabilities = track.getCapabilities?.() as MediaTrackCapabilities & { torch?: boolean };
@@ -291,25 +295,28 @@ export default function ScannerApp() {
         const available = await navigator.mediaDevices.enumerateDevices();
         if (alive.current && token === streamEpoch.current) setDevices(available.filter(device => device.kind === 'videoinput'));
       } catch { /* Device labels are optional. */ }
-      return true;
+      return 'ok';
     } catch (error) {
-      if (!alive.current || token !== streamEpoch.current) return false;
+      if (!alive.current || token !== streamEpoch.current) return 'superseded';
       stopCamera();
-      if (silent) return false;
+      if (silent) { onError?.(error instanceof DOMException ? error.name : 'Error'); return 'failed'; }
       setCameraState('error');
       // A camera that cannot open must not stay requested, or every retry would ask for it again.
       setRequest(defaultCamera);
       setNotice(error instanceof DOMException ? cameraErrors[error.name] ?? '相機開啟失敗，請重試。' : '相機需要 HTTPS 或 localhost 連線；目前仍可使用圖片辨識。');
-      return false;
+      return 'failed';
     }
   }, [clearPreview, stopCamera]);
 
   const switchFacing = async () => {
     if (!facing) return;
     const other: Facing = facing === 'user' ? 'environment' : 'user';
-    if (await startCamera({ facing: other, exact: true }, true)) return;
-    showToast({ text: '找不到另一側的鏡頭' });
-    await startCamera({ facing });
+    let reason = '';
+    restoreFocus.current = 'flip';
+    if (await startCamera({ facing: other, exact: true }, true, name => { reason = name; }) !== 'failed') return;
+    showToast({ text: reason === 'OverconstrainedError' || reason === 'NotFoundError' ? '找不到另一側的鏡頭' : cameraErrors[reason] ?? '鏡頭切換失敗' });
+    // Leave the camera off if the page went to the background meanwhile; reopening it there would undo that stop.
+    if (!document.hidden) await startCamera({ facing });
   };
 
   useEffect(() => {
@@ -356,8 +363,10 @@ export default function ScannerApp() {
   }, [accept, cameraState, clearOverlay, decode, frozen]);
 
   useEffect(() => {
-    // The stop button unmounts when the camera stops; hand keyboard focus to the prompt instead of <body>.
-    if (focusPrompt.current && cameraState === 'off' && !preview) { focusPrompt.current = false; promptButton.current?.focus(); }
+    if (!restoreFocus.current || cameraState === 'starting') return;
+    if (restoreFocus.current === 'flip' && cameraState === 'scanning') flipButton.current?.focus();
+    else if ((cameraState === 'off' || cameraState === 'error') && !preview) promptButton.current?.focus();
+    restoreFocus.current = null;
   }, [cameraState, preview]);
 
   const toggleFreeze = () => {
@@ -553,6 +562,11 @@ export default function ScannerApp() {
               {config.group === 'code' && <label className="check-option"><input type="checkbox" checked={config.extended} onChange={event => changeConfig({ extended: event.target.checked })} />包含少見格式（Micro QR、rMQR、DataBar）</label>}
               {config.group === 'marker' && <p className="muted">OpenCV 名稱：<code>{dictionaryOf(config.family)}</code></p>}
               <label className="check-option"><input type="checkbox" checked={vibrate} onChange={event => { vibrateRef.current = event.target.checked; setVibrate(event.target.checked); }} />掃到新內容時震動（支援的裝置）</label>
+              {live && facing && devices.length > 1 && <label className="menu-field">指定鏡頭
+                <select value={deviceId} onChange={event => void startCamera({ deviceId: event.target.value })}>
+                  {devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || '鏡頭 ' + (index + 1)}</option>)}
+                </select>
+              </label>}
               <label className="check-option"><input type="checkbox" checked={showMetrics} onChange={event => setShowMetrics(event.target.checked)} />顯示效能數據</label>
             </div>
           </details>
@@ -565,8 +579,9 @@ export default function ScannerApp() {
           )}
           <canvas ref={overlayRef} className="scanner-overlay" aria-hidden="true" data-shapes={overlay?.shapes.length ?? 0} />
           <p className={'status-chip' + (live || preview ? '' : ' sr-only')} role="status">
-            {notice}{live && facing && notice === '掃描中' && ' · ' + (facing === 'user' ? '前鏡頭' : '後鏡頭')}{showMetrics && live && !frozen && <span className="metrics"> · {metrics.video} fps · 辨識 {metrics.decode}/s</span>}
+            {notice}{showMetrics && live && !frozen && <span className="metrics"> · {metrics.video} fps · 辨識 {metrics.decode}/s</span>}
           </p>
+          {live && facing && <span className="lens-chip">{facing === 'user' ? '前鏡頭' : '後鏡頭'}</span>}
           {!live && !preview && <div className="camera-prompt">
             <LogoMark className="prompt-mark" />
             <p>開啟相機掃描，或選擇圖片</p>
@@ -576,13 +591,13 @@ export default function ScannerApp() {
           </div>}
           {dragging && <div className="drop-hint">放開以辨識圖片</div>}
           <div className="viewfinder-toolbar" onClick={event => event.stopPropagation()}>
-            {live ? <ToolButton label="停止相機" icon={icons.stop} onClick={() => { focusPrompt.current = true; stopCamera(); setNotice('相機已停止'); }} />
+            {live ? <ToolButton label="停止相機" icon={icons.stop} onClick={() => { restoreFocus.current = 'prompt'; stopCamera(); setNotice('相機已停止'); }} />
               : preview ? <ToolButton label="開啟相機" icon={icons.camera} onClick={() => void startCamera(request)} /> : null}
             <ToolButton label="選擇圖片" icon={icons.image} onClick={() => fileRef.current?.click()} />
             {live && <ToolButton label={frozen ? '繼續掃描' : '暫停畫面'} icon={frozen ? icons.play : icons.pause} pressed={frozen} onClick={toggleFreeze} />}
             {config.group === 'marker' && (live || preview) && <ToolButton label="標示方向" icon={icons.direction} pressed={showOrientation} onClick={() => setShowOrientation(!showOrientation)} />}
             {live && torchAvailable && <ToolButton label="手電筒" icon={icons.torch} pressed={torch} onClick={() => void toggleTorch()} />}
-            {live && facing && devices.length > 1 && <ToolButton label={facing === 'user' ? '切換到後鏡頭' : '切換到前鏡頭'} icon={icons.flip} onClick={() => void switchFacing()} />}
+            {live && facing && devices.length > 1 && <ToolButton ref={flipButton} label={facing === 'user' ? '切換到後鏡頭' : '切換到前鏡頭'} icon={icons.flip} onClick={() => void switchFacing()} />}
             {live && !facing && devices.length > 1 && <select className="camera-select" aria-label="選擇鏡頭" value={deviceId} onChange={event => void startCamera({ deviceId: event.target.value })}>
               {devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || '鏡頭 ' + (index + 1)}</option>)}
             </select>}
