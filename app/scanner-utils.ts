@@ -29,20 +29,6 @@ export function polygonMinSide(polygon: Point[]) {
   return Number.isFinite(min) ? min : 0;
 }
 
-export function describeCamera(label: string, index: number) {
-  if (/back|rear|environment|後/i.test(label)) return '後鏡頭';
-  if (/front|user|facetime|前/i.test(label)) return '前鏡頭';
-  return label || '鏡頭 ' + (index + 1);
-}
-
-/** Distinct camera names; repeated names (e.g. several rear lenses) get a number. */
-export function cameraNames(labels: string[]) {
-  const names = labels.map(describeCamera);
-  return names.map((name, index) => names.filter(other => other === name).length > 1
-    ? name + ' ' + (names.slice(0, index + 1).filter(other => other === name).length)
-    : name);
-}
-
 export type HistoryRow = { scannedAt: number; source: string; format: string; text: string };
 
 function csvCell(value: string) {

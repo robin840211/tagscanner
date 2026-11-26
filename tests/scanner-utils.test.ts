@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cameraNames, historyToCsv, isSafeWebUrl, pointInPolygon, polygonMinSide } from '../app/scanner-utils';
+import { historyToCsv, isSafeWebUrl, pointInPolygon, polygonMinSide } from '../app/scanner-utils';
 import { ARUCO_FAMILY_DEFINITIONS } from '../app/aruco-engine';
 import { createOpenCvDetectionSnippet } from '../app/opencv-reference';
 
@@ -25,13 +25,6 @@ describe('overlay hit testing', () => {
   it('measures the shortest side', () => {
     expect(polygonMinSide([{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 20 }, { x: 0, y: 20 }])).toBe(20);
     expect(polygonMinSide([])).toBe(0);
-  });
-});
-
-describe('camera names', () => {
-  it('names lenses by facing and numbers duplicates', () => {
-    expect(cameraNames(['Back Camera', 'Front Camera', ''])).toEqual(['後鏡頭', '前鏡頭', '鏡頭 3']);
-    expect(cameraNames(['camera2 0, facing back', 'camera2 2, facing back'])).toEqual(['後鏡頭 1', '後鏡頭 2']);
   });
 });
 

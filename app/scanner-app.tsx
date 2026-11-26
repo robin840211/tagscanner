@@ -10,7 +10,7 @@ import { createOpenCvDetectionSnippet } from './opencv-reference';
 import type { OpenCvDictionaryName } from './opencv-reference';
 import { parsePayload } from './payload-parser';
 import type { PayloadAction } from './payload-parser';
-import { cameraNames, historyToCsv, pointInPolygon, polygonMinSide } from './scanner-utils';
+import { historyToCsv, pointInPolygon, polygonMinSide } from './scanner-utils';
 import { ScanTracker } from './scan-tracker';
 import { drawTagDirection } from './tag-orientation';
 import LogoMark from './logo-mark';
@@ -24,6 +24,10 @@ type Detection = { text: string; format: string; points: { x: number; y: number 
 type Entry = Detection & { id: string; scannedAt: number; source: 'camera' | 'image' };
 type Overlay = { width: number; height: number; shapes: Detection[] };
 type Pick = { key: string; index: number };
+type Facing = 'environment' | 'user';
+// Phones and tablets switch by facingMode; a specific deviceId is only used where no facing is reported (desktop webcams).
+type CameraRequest = { facing: Facing; exact?: boolean } | { deviceId: string };
+const defaultCamera: CameraRequest = { facing: 'environment' };
 type Toast = { text: string; action?: { label: string; run: () => void } };
 
 const scopes: { id: Scope; label: string }[] = [
@@ -73,6 +77,7 @@ const icons = {
   pause: <Icon><path d="M9 6v12M15 6v12" /></Icon>,
   play: <Icon><path d="M8 6l10 6-10 6z" /></Icon>,
   direction: <Icon><path d="M12 19V5M6 11l6-6 6 6" /></Icon>,
+  flip: <Icon><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><path d="M9 13.5a3 3 0 0 1 5-2.2M15 12.5a3 3 0 0 1-5 2.2M14 9.5v2h-2M10 16.5v-2h2" /></Icon>,
   torch: <Icon><path d="M8 3h8l-1 6H9zM9 9h6v4l-1.5 8h-3L9 13z" /></Icon>,
 };
 
@@ -86,6 +91,8 @@ export default function ScannerApp() {
   const [cameraState, setCameraState] = useState<CameraState>('off');
   const [notice, setNotice] = useState('');
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [request, setRequest] = useState<CameraRequest>(defaultCamera);
+  const [facing, setFacing] = useState<Facing | null>(null);
   const [deviceId, setDeviceId] = useState('');
   const [preview, setPreview] = useState('');
   const [history, setHistory] = useState<Entry[]>([]);
@@ -252,7 +259,8 @@ export default function ScannerApp() {
     else if (frozenRef.current && video) { setNotice('已暫停，正在分析此畫面…'); void scanStill(video, video.videoWidth, video.videoHeight, 'camera', token); }
   };
 
-  const startCamera = useCallback(async (requestedDevice = '') => {
+  // Resolves true once the camera is scanning; `silent` leaves failure reporting to the caller.
+  const startCamera = useCallback(async (requested: CameraRequest, silent = false) => {
     stopCamera(); clearPreview();
     const token = streamEpoch.current;
     setCameraState('starting'); setNotice('正在開啟相機…');
@@ -260,33 +268,49 @@ export default function ScannerApp() {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('HTTPS');
       const next = await navigator.mediaDevices.getUserMedia({
         audio: false, video: {
-          ...(requestedDevice ? { deviceId: { exact: requestedDevice } } : { facingMode: { ideal: 'environment' } }),
+          ...('deviceId' in requested ? { deviceId: { exact: requested.deviceId } } : { facingMode: requested.exact ? { exact: requested.facing } : { ideal: requested.facing } }),
           width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 },
         },
       });
-      if (!alive.current || token !== streamEpoch.current) { next.getTracks().forEach(track => track.stop()); return; }
+      if (!alive.current || token !== streamEpoch.current) { next.getTracks().forEach(track => track.stop()); return false; }
       stream.current = next;
       const video = videoRef.current;
-      if (!video) { next.getTracks().forEach(track => track.stop()); return; }
+      if (!video) { next.getTracks().forEach(track => track.stop()); return false; }
       video.srcObject = next; await video.play();
-      if (!alive.current || token !== streamEpoch.current) return;
+      if (!alive.current || token !== streamEpoch.current) return false;
       const track = next.getVideoTracks()[0];
       track.onended = () => { if (stream.current === next) { stopCamera(); setNotice('相機已中斷，請重新開啟。'); } };
       const capabilities = track.getCapabilities?.() as MediaTrackCapabilities & { torch?: boolean };
-      setTorchAvailable(Boolean(capabilities?.torch)); setDeviceId(track.getSettings().deviceId ?? requestedDevice);
+      const settings = track.getSettings();
+      const reported = settings.facingMode === 'user' || settings.facingMode === 'environment' ? settings.facingMode : null;
+      setTorchAvailable(Boolean(capabilities?.torch)); setFacing(reported); setDeviceId(settings.deviceId ?? '');
+      // Remember what actually opened so the next start returns to the same side or device.
+      setRequest(reported ? { facing: reported } : settings.deviceId ? { deviceId: settings.deviceId } : defaultCamera);
       setCameraState('scanning'); setNotice('掃描中');
       try {
         const available = await navigator.mediaDevices.enumerateDevices();
         if (alive.current && token === streamEpoch.current) setDevices(available.filter(device => device.kind === 'videoinput'));
       } catch { /* Device labels are optional. */ }
+      return true;
     } catch (error) {
-      if (!alive.current || token !== streamEpoch.current) return;
-      stopCamera(); setCameraState('error');
-      // A lens that cannot open must not stay selected, or every retry would request it again.
-      if (requestedDevice) setDeviceId('');
+      if (!alive.current || token !== streamEpoch.current) return false;
+      stopCamera();
+      if (silent) return false;
+      setCameraState('error');
+      // A camera that cannot open must not stay requested, or every retry would ask for it again.
+      setRequest(defaultCamera);
       setNotice(error instanceof DOMException ? cameraErrors[error.name] ?? '相機開啟失敗，請重試。' : '相機需要 HTTPS 或 localhost 連線；目前仍可使用圖片辨識。');
+      return false;
     }
   }, [clearPreview, stopCamera]);
+
+  const switchFacing = async () => {
+    if (!facing) return;
+    const other: Facing = facing === 'user' ? 'environment' : 'user';
+    if (await startCamera({ facing: other, exact: true }, true)) return;
+    showToast({ text: '找不到另一側的鏡頭' });
+    await startCamera({ facing });
+  };
 
   useEffect(() => {
     if (cameraState !== 'scanning' || frozen) return;
@@ -505,7 +529,6 @@ export default function ScannerApp() {
   const live = cameraState === 'scanning';
   const markers = config.group === 'marker' ? (overlay?.shapes ?? []).map((shape, index) => ({ ...shape, index })).sort((a, b) => Number(a.text) - Number(b.text)) : [];
   const payload = selected ? parsePayload(selected.text, selected.format) : null;
-  const names = cameraNames(devices.map(device => device.label));
   const peek = sheet && !sheetOpen;
   const renderAction = (action: PayloadAction, primary: boolean) => action.kind === 'open'
     ? isOpenable(action.value) && <a key={action.label} className={'button' + (primary ? ' is-primary' : '')} href={action.value} {...(/^https?:/i.test(action.value) ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{action.label}</a>
@@ -542,25 +565,26 @@ export default function ScannerApp() {
           )}
           <canvas ref={overlayRef} className="scanner-overlay" aria-hidden="true" data-shapes={overlay?.shapes.length ?? 0} />
           <p className={'status-chip' + (live || preview ? '' : ' sr-only')} role="status">
-            {notice}{showMetrics && live && !frozen && <span className="metrics"> · {metrics.video} fps · 辨識 {metrics.decode}/s</span>}
+            {notice}{live && facing && notice === '掃描中' && ' · ' + (facing === 'user' ? '前鏡頭' : '後鏡頭')}{showMetrics && live && !frozen && <span className="metrics"> · {metrics.video} fps · 辨識 {metrics.decode}/s</span>}
           </p>
           {!live && !preview && <div className="camera-prompt">
             <LogoMark className="prompt-mark" />
             <p>開啟相機掃描，或選擇圖片</p>
-            <button ref={promptButton} className="primary-action" type="button" disabled={cameraState === 'starting'} onClick={() => void startCamera(deviceId)}>{cameraState === 'starting' ? '開啟中…' : '開啟相機'}</button>
+            <button ref={promptButton} className="primary-action" type="button" disabled={cameraState === 'starting'} onClick={() => void startCamera(request)}>{cameraState === 'starting' ? '開啟中…' : '開啟相機'}</button>
             {notice && cameraState !== 'starting' && <p className={cameraState === 'error' ? 'prompt-error' : 'prompt-note'}>{notice}</p>}
             {!compact && <p className="prompt-note">也可以把圖片拖放到這裡，或直接貼上（Ctrl+V）</p>}
           </div>}
           {dragging && <div className="drop-hint">放開以辨識圖片</div>}
           <div className="viewfinder-toolbar" onClick={event => event.stopPropagation()}>
             {live ? <ToolButton label="停止相機" icon={icons.stop} onClick={() => { focusPrompt.current = true; stopCamera(); setNotice('相機已停止'); }} />
-              : preview ? <ToolButton label="開啟相機" icon={icons.camera} onClick={() => void startCamera(deviceId)} /> : null}
+              : preview ? <ToolButton label="開啟相機" icon={icons.camera} onClick={() => void startCamera(request)} /> : null}
             <ToolButton label="選擇圖片" icon={icons.image} onClick={() => fileRef.current?.click()} />
             {live && <ToolButton label={frozen ? '繼續掃描' : '暫停畫面'} icon={frozen ? icons.play : icons.pause} pressed={frozen} onClick={toggleFreeze} />}
             {config.group === 'marker' && (live || preview) && <ToolButton label="標示方向" icon={icons.direction} pressed={showOrientation} onClick={() => setShowOrientation(!showOrientation)} />}
             {live && torchAvailable && <ToolButton label="手電筒" icon={icons.torch} pressed={torch} onClick={() => void toggleTorch()} />}
-            {live && devices.length > 1 && <select className="camera-select" aria-label="選擇鏡頭" value={deviceId} onChange={event => { setDeviceId(event.target.value); void startCamera(event.target.value); }}>
-              {devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{names[index]}</option>)}
+            {live && facing && devices.length > 1 && <ToolButton label={facing === 'user' ? '切換到後鏡頭' : '切換到前鏡頭'} icon={icons.flip} onClick={() => void switchFacing()} />}
+            {live && !facing && devices.length > 1 && <select className="camera-select" aria-label="選擇鏡頭" value={deviceId} onChange={event => void startCamera({ deviceId: event.target.value })}>
+              {devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || '鏡頭 ' + (index + 1)}</option>)}
             </select>}
           </div>
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void loadImage(file); }} />
